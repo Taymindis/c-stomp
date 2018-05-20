@@ -397,7 +397,7 @@ cstmp_send_direct(cstmp_session_t *sess, const u_char *frame_str, int timeout_ms
         do {
             int rv = poll(pfds, sess->nfds,  timeout_ms);
             CHECK_ERROR(rv);
-            /***Apprently it is always writable if you set event = POLLIN | POLLOUT; together*/
+
             if (pfds[0].revents & POLLOUT) {
                 connfd = pfds[0].fd;
                 if ( (rv = send(connfd, frame_str, strlen(frame_str), 0)) < 0 ||
