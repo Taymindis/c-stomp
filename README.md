@@ -113,7 +113,9 @@ cstmp_frame_t *consume_frame = cstmp_create_frame_r(sess, cstmp_read_only_frame)
 cstmp_frame_t *send_frame = cstmp_create_frame_r(sess, cstmp_write_only_frame);
 ```
 
-If you know want to make frame read and writable, just create as normal, but this 2 frame might send and receive different response, enjoy and be safe.
+
+
+If you want to make frame read and writable, just create as normal, but this 2 frame might send and receive different response, enjoy and be safe.
 ```c
 cstmp_frame_t *fr1 = cstmp_create_frame(sess);
 cstmp_frame_t *fr2 = cstmp_create_frame(sess);
