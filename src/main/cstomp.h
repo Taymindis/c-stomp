@@ -11,24 +11,23 @@
 #define u_char unsigned char
 #endif
 
-enum cstmp_cmd_t {
-    SEND = 0,
-    SUBSCRIBE = 1,
-    UNSUBSCRIBE = 2,
-    BEGIN = 3,
-    COMMIT = 4,
-    ABORT = 5,
-    ACK = 6,
-    NACK = 7,
-    DISCONNECT = 8,
-    CONNECT = 9,
-    STOMP = 10,
-    CONNECTED = 11,
-    MESSAGE = 12,
-    RECEIPT = 13,
-    ERROR = 14,
-    NOCMD = 15
-};
+/**VALID STOMP COMMAND**/
+    // "SEND",
+    // "SUBSCRIBE",
+    // "UNSUBSCRIBE",
+    // "BEGIN",
+    // "COMMIT",
+    // "ABORT",
+    // "ACK",
+    // "NACK",
+    // "DISCONNECT",
+    // "CONNECT",
+    // "STOMP",
+    // "CONNECTED",
+    // "MESSAGE",
+    // "RECEIPT",
+    // "ERROR",
+/*********/
 
 typedef struct cstmp_frame_val_s {
     u_char *val;
@@ -49,7 +48,7 @@ typedef struct cstmp_session_s {
 
 /***Frame is not thread safe, DO NOT share the frame for multiple threads***/
 typedef struct cstmp_frame_s {
-    enum cstmp_cmd_t cmd;
+    u_char *cmd;
     cstmp_frame_buf_t headers;
     cstmp_frame_buf_t body;
     cstmp_session_t *sess;

@@ -167,7 +167,7 @@ cstmp_create_frame(cstmp_session_t* stp_sess) {
         return NULL;
     }
     fr->sess = stp_sess;
-    fr->cmd = NOCMD;
+    fr->cmd = "";
     headers = &fr->headers;
     body = &fr->body;
     headers->start = headers->last = __cstmp_alloc__(__stp_arg__, cstmp_def_header_size * sizeof(u_char));
@@ -290,12 +290,12 @@ cstmp_add_body_content(cstmp_frame_t *fr, u_char* content) {
     return 1;
 }
 
-u_char* 
+u_char*
 cstmp_get_cmd(cstmp_frame_t *fr) {
-    static size_t cmd_size = sizeof(__cstmp_commands)/sizeof(u_char*) - 1;
-    if(fr->cmd <= cmd_size) {
-        return (u_char*)__cstmp_commands[fr->cmd];
-    } else return "";
+    if(fr) {
+        return fr->cmd;
+    }
+    return "";
 }
 
 int
@@ -326,15 +326,15 @@ cstmp_get_body(cstmp_frame_t *fr, cstmp_frame_val_t *body_val) {
 
 static void
 cstmp_parse_cmd(cstmp_frame_t *fr, u_char* cmd) {
-    static size_t cmd_size = sizeof(__cstmp_commands)/sizeof(u_char*) - 1;
+    static size_t cmd_size = sizeof(__cstmp_commands) / sizeof(u_char*) - 1;
     u_char **cmds = (u_char**) __cstmp_commands;
     int i;
-    fr->cmd = cmd_size; // last one is empty cmd by default
+    fr->cmd = ""; // empty cmd by default
 
     /***only 15 valid commands*/
     for (i = 0; i < cmd_size; i++) {
         if (strcmp(cmds[i], cmd) == 0) {
-            fr->cmd = i;
+            fr->cmd = cmds[i];
             break;
         }
     }
@@ -361,7 +361,7 @@ cstmp_print_raw(u_char *str, size_t len) {
 
 void
 cstmp_dump_frame_raw(cstmp_frame_t *fr) {
-    printf("%s", __cstmp_commands[fr->cmd]);
+    printf("%s", fr->cmd);
     printf("\\n");
     cstmp_print_raw(fr->headers.start, cstmp_buf_size((&fr->headers)));
     printf("\\n");
@@ -371,7 +371,7 @@ cstmp_dump_frame_raw(cstmp_frame_t *fr) {
 
 void
 cstmp_dump_frame_pretty(cstmp_frame_t *fr) {
-    printf("%s\n", __cstmp_commands[fr->cmd]);
+    printf("%s\n", fr->cmd);
     printf("%.*s\n\n", (int) cstmp_buf_size((&fr->headers)), fr->headers.start);
     printf("%.*s\n", (int)cstmp_buf_size((&fr->body)), fr->body.start);
     printf("\n");
@@ -380,7 +380,7 @@ cstmp_dump_frame_pretty(cstmp_frame_t *fr) {
 void
 cstmp_reset_frame(cstmp_frame_t *fr) {
     if (fr) {
-        fr->cmd = NOCMD;
+        fr->cmd = "";
         memset(fr->headers.start, 0, cstmp_buf_size((&fr->headers)));
         memset(fr->body.start, 0, cstmp_buf_size((&fr->body)));
         fr->headers.last = fr->headers.start;
@@ -426,7 +426,7 @@ cstmp_send(cstmp_frame_t *fr, int timeout_ms, int tries) {
                 CHECK_ERROR(rv);
                 if (pfds[0].revents & POLLOUT) {
                     connfd = pfds[0].fd;
-                    const u_char* cmd = __cstmp_commands[fr->cmd];
+                    const u_char* cmd = fr->cmd;
                     const size_t header_len = cstmp_buf_size((&fr->headers)), body_len = cstmp_buf_size((&fr->body));
                     if (
                         (rv = send(connfd, cmd , strlen(cmd), 0)) < 0 ||

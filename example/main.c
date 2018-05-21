@@ -17,7 +17,7 @@ void *consuming_thread(void* nothing) {
 	cstmp_session_t *consuming_sess = cstmp_connect(HOST, PORT);
 	if (consuming_sess) {
 		cstmp_frame_t *consume_fr = cstmp_create_frame(consuming_sess);
-		consume_fr->cmd = CONNECT;
+		consume_fr->cmd = "CONNECT";
 		cstmp_add_header(consume_fr, "login", "guest");
 		cstmp_add_header(consume_fr, "passcode", "guest");
 		cstmp_add_header(consume_fr, "version", "1.2");
@@ -29,7 +29,7 @@ void *consuming_thread(void* nothing) {
 		/*** remember to reset frame before prepare the new command ***/
 		cstmp_reset_frame(consume_fr);
 
-		consume_fr->cmd = SUBSCRIBE;
+		consume_fr->cmd = "SUBSCRIBE";
 		cstmp_add_header(consume_fr, "destination", QUEUE_NAME);
 		cstmp_add_header(consume_fr, "ack", "auto");
 		cstmp_add_header(consume_fr, "id", "0");
@@ -55,7 +55,7 @@ void *consuming_thread(void* nothing) {
 		}
 
 
-		consume_fr->cmd = DISCONNECT;
+		consume_fr->cmd = "DISCONNECT";
 		cstmp_add_header(consume_fr, "receipt", "dummy-recv-test");
 		if ( cstmp_send(consume_fr, 300, 0) &&
 		        cstmp_recv(consume_fr, 300, 0) ) {
@@ -89,7 +89,7 @@ int main() {
 	if (sess) {
 		cstmp_frame_t *fr = cstmp_create_frame(sess);
 		if (fr) {
-			fr->cmd = CONNECT;
+			fr->cmd = "CONNECT";
 			cstmp_add_header(fr, "login", "guest");
 			cstmp_add_header(fr, "passcode", "guest");
 			cstmp_add_header(fr, "version", "1.2");
@@ -104,7 +104,7 @@ int main() {
 			int send_count = 100;
 			while (send_count--) {
 				cstmp_reset_frame(fr);
-				fr->cmd = SEND;
+				fr->cmd = "SEND";
 				cstmp_add_header(fr, "destination", QUEUE_NAME);
 				cstmp_add_header(fr, "persistent", "false");
 				cstmp_add_header(fr, "content-type", "text/plain");
@@ -121,7 +121,7 @@ int main() {
 			printf("%s\n", "disconnecting Stomp");
 			usleep(1000 * 3000);
 
-			fr->cmd = DISCONNECT;
+			fr->cmd = "DISCONNECT";
 			cstmp_add_header(fr, "receipt", "dummy-send-test");
 			if ( cstmp_send(fr, 1000, 3) && cstmp_recv(fr, 1000, 3) ) {
 				cstmp_dump_frame_pretty(fr);
