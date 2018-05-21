@@ -9,13 +9,17 @@ ENDIF(NOT DEFINED CMAKE_INSTALL_INCLUDEDIR)
 
 file(GLOB_RECURSE sources src/main/*.c src/main/*.h)
 file(GLOB_RECURSE testfile example/main.c src/main/*.h)
+file(GLOB_RECURSE testfile2 example/share_sess_sample.c src/main/*.h)
 
 
 add_executable(run-test ${sources} ${testfile})
+add_executable(run-test2 ${sources} ${testfile2})
 
 target_include_directories(run-test PUBLIC src/main)
+target_include_directories(run-test2 PUBLIC src/main)
 
 target_link_libraries(run-test PUBLIC pthread)
+target_link_libraries(run-test2 PUBLIC pthread)
 
 include_directories(src/main /usr/local/include)
 

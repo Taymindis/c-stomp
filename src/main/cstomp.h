@@ -29,6 +29,22 @@
     // "ERROR",
 /*********/
 
+/** 
+* Noted: 
+* cstmp_readwrite_frame are safe to use if you are connect 1 frame per connection session.
+* 
+* If session being sharing session to multiple frame, only each frame should only have one type either read or write only
+*
+**/
+enum cstmp_frame_io_type {
+    cstmp_read_only_frame=1,
+    
+     /*** Please be take note that readwrite frame are not allowed for sharing same session, it will causing broken pipe ***/
+    cstmp_readwrite_frame=2,
+
+    cstmp_write_only_frame=3
+};
+
 typedef struct cstmp_frame_val_s {
     u_char *val;
     size_t len;
@@ -46,12 +62,12 @@ typedef struct cstmp_session_s {
     struct sockaddr_in addr;
 } cstmp_session_t;
 
-/***Frame is not thread safe, DO NOT share the frame for multiple threads***/
 typedef struct cstmp_frame_s {
     u_char *cmd;
     cstmp_frame_buf_t headers;
     cstmp_frame_buf_t body;
     cstmp_session_t *sess;
+    enum cstmp_frame_io_type io_type; 
 } cstmp_frame_t;
 
 
@@ -63,7 +79,11 @@ extern cstmp_session_t* cstmp_connect(const char *hostname, int port );
 /** Do take note that if you disc the session, some other frame instance might using it**/
 extern void cstmp_disconnect(cstmp_session_t* stp_sess);
 
+/** By default frame is able to read and write, if enforce for read or write only, please use cstmp_create_frame_r **/
 extern cstmp_frame_t* cstmp_create_frame(cstmp_session_t* stp_sess);
+
+/** For enforce the rule read or write only**/
+extern cstmp_frame_t* cstmp_create_frame_r(cstmp_session_t* stp_sess, enum cstmp_frame_io_type io_type);
 
 extern void cstmp_destroy_frame(cstmp_frame_t *fr);
 

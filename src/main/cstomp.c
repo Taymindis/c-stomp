@@ -157,9 +157,14 @@ cstmp_disconnect(cstmp_session_t* stp_sess) {
     }
 }
 
-/** Extra malloc and free customization **/
+
 cstmp_frame_t*
 cstmp_create_frame(cstmp_session_t* stp_sess) {
+    return cstmp_create_frame_r(stp_sess, cstmp_readwrite_frame);
+}
+
+cstmp_frame_t*
+cstmp_create_frame_r(cstmp_session_t* stp_sess, enum cstmp_frame_io_type io_type) {
     cstmp_frame_buf_t *headers, *body;
 
     cstmp_frame_t *fr =  __cstmp_alloc__(__stp_arg__, sizeof(cstmp_frame_t));
@@ -168,6 +173,7 @@ cstmp_create_frame(cstmp_session_t* stp_sess) {
     }
     fr->sess = stp_sess;
     fr->cmd = "";
+    fr->io_type = io_type;
     headers = &fr->headers;
     body = &fr->body;
     headers->start = headers->last = __cstmp_alloc__(__stp_arg__, cstmp_def_header_size * sizeof(u_char));
@@ -292,7 +298,7 @@ cstmp_add_body_content(cstmp_frame_t *fr, u_char* content) {
 
 u_char*
 cstmp_get_cmd(cstmp_frame_t *fr) {
-    if(fr) {
+    if (fr) {
         return fr->cmd;
     }
     return "";
@@ -416,7 +422,7 @@ cstmp_send_direct(cstmp_session_t *sess, const u_char *frame_str, int timeout_ms
 int
 cstmp_send(cstmp_frame_t *fr, int timeout_ms, int tries) {
     int success = 0, connfd;
-    if (fr) {
+    if (fr && fr->io_type >= 2) { /* Means it is write only or read write*/
         cstmp_session_t *sess = fr->sess;
         if (sess) {
             struct pollfd *pfds = sess->pfds;
@@ -444,14 +450,14 @@ cstmp_send(cstmp_frame_t *fr, int timeout_ms, int tries) {
                 }
             } while (tries--);/*while try*/
         }
-    }
+    } else fprintf(stderr, "%s\n", "Invalid Frame type");
     return success;
 }
 
 int
 cstmp_recv(cstmp_frame_t *fr, int timeout_ms, int tries) {
     int success = 0;
-    if (fr) {
+    if (fr && fr->io_type <= 2) { /* Means it is read only or read write*/
         cstmp_session_t *sess = fr->sess;
         if (sess) {
             struct pollfd *pfds = sess->pfds;
@@ -500,15 +506,17 @@ cstmp_recv(cstmp_frame_t *fr, int timeout_ms, int tries) {
                 }
             } while (tries--);/*while try*/
         }
-    }
+    } else fprintf(stderr, "%s\n", "Invalid Frame type");
     return success; /*Failed*/
 }
 
 void
 cstmp_consume(cstmp_frame_t *fr, void (*callback)(cstmp_frame_t *), int *consuming, int timeout_ms) {
-    while (*consuming) {
-        if (cstmp_recv(fr, timeout_ms, 0)) {
-            callback(fr);
+    if (fr && fr->io_type <= 2) {
+        while (*consuming) {
+            if (cstmp_recv(fr, timeout_ms, 0)) {
+                callback(fr);
+            }
         }
-    }
+    } else fprintf(stderr, "%s\n", "Invalid Frame type to consume");
 }

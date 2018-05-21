@@ -11,6 +11,9 @@ int consuming = 1;
 #define PORT 61618
 #define QUEUE_NAME "/amq/queue/stompqueue"
 
+/***
+*   This example showing each frame has each connection session, it won't affect the session read write issue.
+***/
 
 void *consuming_thread(void* nothing) {
 
