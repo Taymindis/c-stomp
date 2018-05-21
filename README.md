@@ -10,6 +10,7 @@ Table of Contents
 * [Example](#example)
 * [Installation](#installation)
 * [Uninstall](#uninstall)
+* [Tips And Tricks](#tips-and-tricks)
 * [Support](#support)
 * [Copyright & License](#copyright--license)
 
@@ -24,7 +25,7 @@ Example
     /*For Connecting to Stomp */
     cstmp_session_t *sess = cstmp_connect(HOST, PORT);
     cstmp_frame_t *fr = cstmp_create_frame(sess);
-    fr->cmd = CONNECT;
+    fr->cmd = "CONNECT";
     cstmp_add_header(fr, "login", "guest");
     cstmp_add_header(fr, "passcode", "guest");
     if (cstmp_send(fr, 1000/*timeout_ms*/, 0/*conn retry time*/) && cstmp_recv(fr, 1000/*timeout_ms*/, 0/*conn retry time*/)) {
@@ -34,7 +35,7 @@ Example
 ```c
     /* For Sending to */
     cstmp_reset_frame(fr); // Remember to reset frame for every send command.
-    fr->cmd = SEND;
+    fr->cmd = "SEND";
     cstmp_add_header(fr, "destination", QUEUE_NAME);
     cstmp_add_header(fr, "persistent", "false");
     cstmp_add_header(fr, "content-type", "text/plain");
@@ -57,7 +58,7 @@ Example
     /*** remember to reset frame before prepare the new command ***/
     cstmp_reset_frame(consume_fr);
 
-    consume_fr->cmd = SUBSCRIBE;
+    consume_fr->cmd = "SUBSCRIBE";
     cstmp_add_header(consume_fr, "destination", QUEUE_NAME);
     cstmp_add_header(consume_fr, "ack", "auto");
     cstmp_add_header(consume_fr, "id", "0");
@@ -98,6 +99,24 @@ Uninstall
 ```bash
 cd $project_root_dir/build
 sudo make uninstall
+```
+
+
+Tips And Tricks
+===============
+
+If you are sharing send and receive frame with the same session(connection/socket), you should create frame with it's role, so the frame know.
+
+For Read only frame and Send only frame, they are sharing same connection, but one is only for send out, another only for read in.
+```c
+cstmp_frame_t *consume_frame = cstmp_create_frame_r(sess, cstmp_read_only_frame);
+cstmp_frame_t *send_frame = cstmp_create_frame_r(sess, cstmp_write_only_frame);
+```
+
+If you know want to make frame read and writable, just create as normal, but this 2 frame might send and receive different response, enjoy and be safe.
+```c
+cstmp_frame_t *fr1 = cstmp_create_frame(sess);
+cstmp_frame_t *fr2 = cstmp_create_frame(sess);
 ```
 
 [Back to TOC](#table-of-contents)
