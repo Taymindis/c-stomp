@@ -254,6 +254,25 @@ cstmp_add_header_str(cstmp_frame_t *fr, const u_char *keyval) {
 }
 
 int
+cstmp_add_header_str_and_len(cstmp_frame_t *fr, u_char *keyval, size_t keyval_len) {
+    cstmp_frame_buf_t *headers;
+
+    if (!keyval || !keyval_len)
+        return 0;
+
+    headers = &fr->headers;
+
+    if ( ( cstmp_buf_size(headers) + keyval_len + 2) >  headers->total_size ) {
+        _cstmp_reload_buf_size(headers, cstmp_buf_size(headers) + keyval_len + 2/*for : and LF and \0*/);
+    }
+
+    headers->last = cstmp_cpymem(headers->last, keyval, keyval_len);
+    headers->last = cstmp_cpymem(headers->last, LF, 1 * sizeof(u_char));
+    *headers->last = '\0';
+    return 1;
+}
+
+int
 cstmp_add_header(cstmp_frame_t *fr, const u_char *key, const u_char* val) {
     cstmp_frame_buf_t *headers;
     size_t key_len, val_len;

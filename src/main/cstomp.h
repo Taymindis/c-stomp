@@ -89,6 +89,8 @@ extern void cstmp_destroy_frame(cstmp_frame_t *fr);
 
 extern int cstmp_add_header_str(cstmp_frame_t *fr, const u_char *keyval);
 
+extern int cstmp_add_header_str_and_len(cstmp_frame_t *fr, u_char *keyval, size_t keyval_len);
+
 extern int cstmp_add_header(cstmp_frame_t *fr, const u_char *key, const u_char* val);
 
 extern int cstmp_add_body_content(cstmp_frame_t *fr, u_char* content);
