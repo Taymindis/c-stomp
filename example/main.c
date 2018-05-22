@@ -93,9 +93,9 @@ int main() {
 		cstmp_frame_t *fr = cstmp_create_frame(sess);
 		if (fr) {
 			fr->cmd = "CONNECT";
-			cstmp_add_header(fr, "login", "guest");
-			cstmp_add_header(fr, "passcode", "guest");
-			cstmp_add_header(fr, "version", "1.2");
+			cstmp_add_header_str(fr, "version:1.2"); // for direct string set method
+			cstmp_add_header(fr, "login", "guest"); // for key val set method
+			cstmp_add_header_str_and_len(fr, "passcode:guest", sizeof("passcode:guest") - 1); // in case you need len specified
 
 			cstmp_frame_val_t val;
 

@@ -50,9 +50,9 @@ int main() {
 
 	/** since fr and consume_fr are using same session **/
 	fr->cmd = "CONNECT";
-	cstmp_add_header(fr, "login", "guest");
-	cstmp_add_header(fr, "passcode", "guest");
-	cstmp_add_header(fr, "version", "1.2");
+	cstmp_add_header_str(fr, "version:1.2"); // for direct string set method
+	cstmp_add_header(fr, "login", "guest"); // for key val set method
+	cstmp_add_header_str_and_len(fr, "passcode:guest", sizeof("passcode:guest") - 1); // in case you need len specified
 
 	if (cstmp_send(fr, 1000, 0) && cstmp_recv(fr, 1000, 0)) {
 		cstmp_dump_frame_pretty(fr);
