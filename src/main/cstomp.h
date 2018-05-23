@@ -36,15 +36,6 @@
 * If session being sharing session to multiple frame, only each frame should only have one type either read or write only
 *
 **/
-enum cstmp_frame_io_type {
-    cstmp_read_only_frame=1,
-    
-     /*** Please be take note that readwrite frame are not allowed for sharing same session, it will causing broken pipe ***/
-    cstmp_readwrite_frame=2,
-
-    cstmp_write_only_frame=3
-};
-
 typedef struct cstmp_frame_val_s {
     u_char *val;
     size_t len;
@@ -57,9 +48,12 @@ typedef struct cstmp_frame_buf_s {
 } cstmp_frame_buf_t;
 
 typedef struct cstmp_session_s {
-    struct pollfd pfds[2];
-    nfds_t nfds;
+    int sock;
     struct sockaddr_in addr;
+    int send_timeout;
+    int recv_timeout;
+    /*Atomic*/int read_lock;
+    /*Atomic*/int write_lock;
 } cstmp_session_t;
 
 typedef struct cstmp_frame_s {
@@ -67,7 +61,6 @@ typedef struct cstmp_frame_s {
     cstmp_frame_buf_t headers;
     cstmp_frame_buf_t body;
     cstmp_session_t *sess;
-    enum cstmp_frame_io_type io_type; 
 } cstmp_frame_t;
 
 
@@ -75,15 +68,15 @@ typedef struct cstmp_frame_s {
 extern void cstmp_set_malloc_management(void* (*stp_alloc)(void* arg, size_t sz), void (*stp_free)(void* arg, void* ptr), void* arg );
 
 extern cstmp_session_t* cstmp_connect(const char *hostname, int port );
+extern cstmp_session_t* cstmp_connect_t(const char *hostname, int port, int send_timeout, int recv_timeout );
+extern cstmp_session_t* cstmp_new_session( cstmp_session_t* curr_sess );
+
 
 /** Do take note that if you disc the session, some other frame instance might using it**/
 extern void cstmp_disconnect(cstmp_session_t* stp_sess);
 
-/** By default frame is able to read and write, if enforce for read or write only, please use cstmp_create_frame_r **/
-extern cstmp_frame_t* cstmp_create_frame(cstmp_session_t* stp_sess);
-
-/** For enforce the rule read or write only**/
-extern cstmp_frame_t* cstmp_create_frame_r(cstmp_session_t* stp_sess, enum cstmp_frame_io_type io_type);
+/**To create new socket, prevent concurrent issue**/
+extern cstmp_frame_t* cstmp_new_frame();
 
 extern void cstmp_destroy_frame(cstmp_frame_t *fr);
 
@@ -109,12 +102,12 @@ extern void cstmp_dump_frame_pretty(cstmp_frame_t *fr);
 
 extern void cstmp_reset_frame(cstmp_frame_t *fr);
 
-extern int cstmp_send_direct(cstmp_session_t *sess, const u_char *frame_str, int timeout_ms, int tries);
+extern int cstmp_send_direct(cstmp_session_t *sess, const u_char *frame_str, int tries);
 
-extern int cstmp_send(cstmp_frame_t *fr, int timeout_ms, int tries);
+extern int cstmp_send(cstmp_session_t *sess, cstmp_frame_t *fr, int tries);
 
-extern int cstmp_recv(cstmp_frame_t *fr, int timeout_ms, int tries);
+extern int cstmp_recv(cstmp_session_t *sess, cstmp_frame_t *fr, int tries);
 
-extern void cstmp_consume(cstmp_frame_t *fr, void (*callback)(cstmp_frame_t *), int *consuming, int timeout_ms);
+extern void cstmp_consume(cstmp_session_t *sess, cstmp_frame_t *fr, void (*callback)(cstmp_frame_t *), int *consuming);
 
 #endif

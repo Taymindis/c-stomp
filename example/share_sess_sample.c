@@ -15,7 +15,7 @@ static cstmp_session_t *sess;
 void *consuming_thread(void* none) {
 	if (sess) {
 		/** This session already subscribe(ref line 64), so we just create a readonly frame. **/
-		cstmp_frame_t *consume_fr = cstmp_create_frame_r(sess, cstmp_read_only_frame);
+		cstmp_frame_t *consume_fr = cstmp_new_frame();
 		if (consume_fr) {
 			void (*consume_handler)(cstmp_frame_t* consume_fr) =
 			({
@@ -27,7 +27,7 @@ void *consuming_thread(void* none) {
 			});
 
 			/** Keep hooking until consuming = false / 0 **/
-			cstmp_consume((cstmp_frame_t*) consume_fr, consume_handler, &consuming, 500);
+			cstmp_consume(sess, (cstmp_frame_t*) consume_fr, consume_handler, &consuming);
 
 			cstmp_destroy_frame(consume_fr);
 
@@ -43,10 +43,10 @@ int main() {
 	printf("%s %s\n", "Starting stomp connection, sending and consuming", QUEUE_NAME);
 	usleep(1000 * 3000);
 
-	sess = cstmp_connect(HOST, PORT);
+	sess = cstmp_connect_t(HOST, PORT, 2000, 2000);
 
 	/** This frame are readable and writable**/
-	cstmp_frame_t *fr = cstmp_create_frame(sess);
+	cstmp_frame_t *fr = cstmp_new_frame();
 
 	/** since fr and consume_fr are using same session **/
 	fr->cmd = "CONNECT";
@@ -54,7 +54,7 @@ int main() {
 	cstmp_add_header(fr, "login", "guest"); // for key val set method
 	cstmp_add_header_str_and_len(fr, "passcode:guest", sizeof("passcode:guest") - 1); // in case you need len specified
 
-	if (cstmp_send(fr, 1000, 0) && cstmp_recv(fr, 1000, 0)) {
+	if (cstmp_send(sess, fr, 0) && cstmp_recv(sess, fr, 0)) {
 		cstmp_dump_frame_pretty(fr);
 	}
 
@@ -66,7 +66,7 @@ int main() {
 	cstmp_add_header(fr, "ack", "auto");
 	cstmp_add_header(fr, "id", "0");
 	cstmp_add_header(fr, "durable", "false");
-	cstmp_send(fr, 1000, 3);
+	cstmp_send(sess, fr, 3);
 
 	/** Create a thread for consuming **/
 	pthread_t t;
@@ -91,7 +91,7 @@ int main() {
 				cstmp_add_body_content(fr, "{\"my_key\":\"akjdlkajdklj2ljladasjldjasljdl@ASD2\", "); // for direct added
 				cstmp_add_body_content_and_len(fr, "\"my_name\":\"John D\"}", sizeof("\"my_name\":\"John D\"}") - 1); // for len specified
 
-				if (! cstmp_send(fr, 1000, 1)) {
+				if (! cstmp_send(sess, fr, 1)) {
 					assert(0 && "Unable to send frame");
 					break;
 				}
@@ -104,7 +104,7 @@ int main() {
 
 			fr->cmd = "DISCONNECT";
 			cstmp_add_header(fr, "receipt", "dummy-send-consume-test");
-			if ( cstmp_send(fr, 1000, 3) && cstmp_recv(fr, 1000, 3) ) {
+			if ( cstmp_send(sess, fr, 1) && cstmp_recv(sess, fr, 1) ) {
 				cstmp_dump_frame_pretty(fr);
 			}
 

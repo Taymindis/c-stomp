@@ -17,15 +17,15 @@ int consuming = 1;
 
 void *consuming_thread(void* nothing) {
 
-	cstmp_session_t *consuming_sess = cstmp_connect(HOST, PORT);
+	cstmp_session_t *consuming_sess = cstmp_connect_t(HOST, PORT, 500, 500);
 	if (consuming_sess) {
-		cstmp_frame_t *consume_fr = cstmp_create_frame(consuming_sess);
+		cstmp_frame_t *consume_fr = cstmp_new_frame();
 		consume_fr->cmd = "CONNECT";
 		cstmp_add_header(consume_fr, "login", "guest");
 		cstmp_add_header(consume_fr, "passcode", "guest");
 		cstmp_add_header(consume_fr, "version", "1.2");
 
-		if (cstmp_send(consume_fr, 1000, 0) && cstmp_recv(consume_fr, 1000, 0)) {
+		if (cstmp_send(consuming_sess, consume_fr, 0) && cstmp_recv(consuming_sess, consume_fr, 0)) {
 			cstmp_dump_frame_pretty(consume_fr);
 		}
 
@@ -37,7 +37,7 @@ void *consuming_thread(void* nothing) {
 		cstmp_add_header(consume_fr, "ack", "auto");
 		cstmp_add_header(consume_fr, "id", "0");
 		cstmp_add_header(consume_fr, "durable", "false");
-		cstmp_send(consume_fr, 1000, 3);
+		cstmp_send(consuming_sess, consume_fr, 3);
 
 		void (*consume_handler)(cstmp_frame_t* consume_fr) =
 		({
@@ -49,19 +49,19 @@ void *consuming_thread(void* nothing) {
 		});
 
 		/** Keep hooking until consuming = false / 0 **/
-		cstmp_consume((cstmp_frame_t*) consume_fr, consume_handler, &consuming, 500);
+		cstmp_consume(consuming_sess, (cstmp_frame_t*) consume_fr, consume_handler, &consuming);
 
 		/** you can use direct string if you don't want frame to send **/
-		if (cstmp_send_direct(consuming_sess, "UNSUBSCRIBE\nid:0\n\n", 300, 0) &&
-		        cstmp_recv(consume_fr, 300, 0) ) {
+		if (cstmp_send_direct(consuming_sess, "UNSUBSCRIBE\nid:0\n\n", 0) &&
+		        cstmp_recv(consuming_sess, consume_fr, 0) ) {
 			cstmp_dump_frame_pretty(consume_fr);
 		}
 
 
 		consume_fr->cmd = "DISCONNECT";
 		cstmp_add_header(consume_fr, "receipt", "dummy-recv-test");
-		if ( cstmp_send(consume_fr, 300, 0) &&
-		        cstmp_recv(consume_fr, 300, 0) ) {
+		if ( cstmp_send(consuming_sess, consume_fr, 0) &&
+		        cstmp_recv(consuming_sess, consume_fr, 0) ) {
 			cstmp_dump_frame_pretty(consume_fr);
 		}
 
@@ -90,7 +90,7 @@ int main() {
 	/*** Sending ***/
 	cstmp_session_t *sess = cstmp_connect(HOST, PORT);
 	if (sess) {
-		cstmp_frame_t *fr = cstmp_create_frame(sess);
+		cstmp_frame_t *fr = cstmp_new_frame(sess);
 		if (fr) {
 			fr->cmd = "CONNECT";
 			cstmp_add_header_str(fr, "version:1.2"); // for direct string set method
@@ -99,7 +99,7 @@ int main() {
 
 			cstmp_frame_val_t val;
 
-			if (cstmp_send(fr, 1000, 0) && cstmp_recv(fr, 1000, 0)) {
+			if (cstmp_send(sess, fr, 0) && cstmp_recv(sess, fr, 0)) {
 				cstmp_dump_frame_pretty(fr);
 			}
 
@@ -113,7 +113,7 @@ int main() {
 				cstmp_add_header(fr, "content-type", "text/plain");
 				cstmp_add_body_content(fr, "{\"my_key\":\"akjdlkajdklj2ljladasjldjasljdl@ASD2\"}");
 
-				if (! cstmp_send(fr, 1000, 1)) {
+				if (! cstmp_send(sess, fr, 1)) {
 					assert(0 && "Unable to send frame");
 					break;
 				}
@@ -126,7 +126,7 @@ int main() {
 
 			fr->cmd = "DISCONNECT";
 			cstmp_add_header(fr, "receipt", "dummy-send-test");
-			if ( cstmp_send(fr, 1000, 3) && cstmp_recv(fr, 1000, 3) ) {
+			if ( cstmp_send(sess, fr, 3) && cstmp_recv(sess, fr, 3) ) {
 				cstmp_dump_frame_pretty(fr);
 			}
 

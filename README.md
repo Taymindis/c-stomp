@@ -24,7 +24,7 @@ Example
 ```c
     /*For Connecting to Stomp */
     cstmp_session_t *sess = cstmp_connect(HOST, PORT);
-    cstmp_frame_t *fr = cstmp_create_frame(sess);
+    cstmp_frame_t *fr = cstmp_new_frame(sess);
     fr->cmd = "CONNECT";
     cstmp_add_header(fr, "login", "guest");
     cstmp_add_header(fr, "passcode", "guest");
@@ -101,27 +101,6 @@ cd $project_root_dir/build
 sudo make uninstall
 ```
 
-
-Tips And Tricks
-===============
-
-If you are sharing send and receive frame with the same session(connection/socket), you should create frame with it's role, so the frame know.
-
-For Read only frame and Send only frame, they are sharing same connection, but one is only for send out, another only for read in.
-```c
-cstmp_frame_t *consume_frame = cstmp_create_frame_r(sess, cstmp_read_only_frame);
-cstmp_frame_t *send_frame = cstmp_create_frame_r(sess, cstmp_write_only_frame);
-```
-
-
-
-If you want to make frame read and writable, just create as normal, but this 2 frame might send and receive different response, enjoy and be safe.
-```c
-cstmp_frame_t *fr1 = cstmp_create_frame(sess);
-cstmp_frame_t *fr2 = cstmp_create_frame(sess);
-```
-
-[Back to TOC](#table-of-contents)
 
 Support
 =======

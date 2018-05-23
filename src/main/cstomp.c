@@ -42,18 +42,23 @@ static void* __stp_arg__ = NULL;
 #define C_STMP_POLL_EXPIRE      (0)
 #define C_STMP_WRITE_CTR_AT_LF(fd)  send(fd, "\0\n", 2, 0)
 
-/* If we were interrupted by a signal we need to continue to flush the data */
-#define CHECK_ERROR(rv) \
-if(rv == C_STMP_POLL_EXPIRE){\
-    continue;\
-} else if(rv<0) {\
-    if (errno == EINTR) {\
-    continue;\
-    } else if (errno != EAGAIN && errno != EWOULDBLOCK){\
-    fprintf(stderr, "Error while process socket read/write: %s\n",strerror(errno));\
-    return 0;/*FAIL*/\
-    }\
-}
+/***
+*  Sharing the socket for read and write will make the things split up
+*  Make sure each socket only proceed one frame fully requested
+**/
+#define CSTMP_LOCK_READING while(__sync_lock_test_and_set(&sess->read_lock, 1))
+#define CSTMP_RELEASE_READING __sync_lock_release(&sess->read_lock)
+#define CSTMP_LOCK_WRITING while(__sync_lock_test_and_set(&sess->write_lock, 1))
+#define CSTMP_RELEASE_WRITING __sync_lock_release(&sess->write_lock)
+
+#define CHECK_ERROR(n) \
+if(n<0){\
+if (errno == EWOULDBLOCK || errno == EINTR) {\
+continue;\
+}else if (errno != EAGAIN && errno != EWOULDBLOCK){\
+fprintf(stderr, "Error while process socket read/write: %s\n",strerror(errno));\
+tries=0;success=0;/*FAIL*/\
+}}
 
 static const u_char *__cstmp_commands[16] = {
     (u_char*)"SEND",
@@ -74,6 +79,7 @@ static const u_char *__cstmp_commands[16] = {
     (u_char*)""
 };
 
+
 /** Extra malloc and free customization **/
 void
 cstmp_set_malloc_management(void* (*stp_alloc)(void* arg, size_t sz), void (*stp_free)(void* arg, void* ptr), void* arg ) {
@@ -91,7 +97,12 @@ cstmp_set_malloc_management(void* (*stp_alloc)(void* arg, size_t sz), void (*stp
 /*Default*/
 cstmp_session_t*
 cstmp_connect(const char *hostname, int port ) {
-    int       connfd, blocking = 0; /** It can't be blocked **/
+    return cstmp_connect_t(hostname, port, 3000, 3000);
+}
+
+cstmp_session_t*
+cstmp_connect_t(const char *hostname, int port, int send_timeout, int recv_timeout ) {
+    int       connfd;
     struct sockaddr_in *servaddr;
     size_t sizeofaddr;
     struct hostent *hostip;
@@ -105,7 +116,6 @@ cstmp_connect(const char *hostname, int port ) {
 
     servaddr = &sess->addr;
     sizeofaddr = sizeof(sess->addr);
-    sess->nfds = 1;
 
     if ( ( connfd = socket( AF_INET, SOCK_STREAM, 0 ) ) == -1 ) {
         fprintf( stderr, "%s\n", "Error: Unable to create socket");
@@ -134,17 +144,91 @@ cstmp_connect(const char *hostname, int port ) {
         return NULL;
     }
 
-    int flags = fcntl(connfd, F_GETFL, 0);
-    flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
-    if (fcntl(connfd, F_SETFL, flags) != 0)
-    {
-        fprintf(stderr, "Error setting non-blocking mode on socket: %s\n",
-                strerror(errno));
+    struct timeval send_tmout_val;
+    send_tmout_val.tv_sec = send_timeout / 1000; // Default 1 sec time out
+    send_tmout_val.tv_usec = (send_timeout % 1000) * 1000 ;
+    if (setsockopt (connfd, SOL_SOCKET, SO_SNDTIMEO, &send_tmout_val,
+                    sizeof(send_tmout_val)) < 0)
+        fprintf(stderr, "%s\n", "setsockopt send_tmout_val failed\n");
+
+    struct timeval recv_tmout_val;
+    recv_tmout_val.tv_sec = recv_timeout / 1000; // Default 1 sec time out
+    recv_tmout_val.tv_usec = (recv_timeout % 1000) * 1000 ;
+    if (setsockopt (connfd, SOL_SOCKET, SO_RCVTIMEO, &recv_tmout_val,
+                    sizeof(recv_tmout_val)) < 0)
+        fprintf(stderr, "%s\n", "setsockopt recv_tmout_val failed\n");
+
+
+    sess->sock = connfd;
+    sess->read_lock = 0;
+    sess->write_lock = 0;
+    sess->send_timeout = send_timeout;
+    sess->recv_timeout = recv_timeout;
+
+    // int flags = fcntl(connfd, F_GETFL, 0);
+    // flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+    // if (fcntl(connfd, F_SETFL, flags) != 0)
+    // {
+    //     fprintf(stderr, "Error setting non-blocking mode on socket: %s\n",
+    //             strerror(errno));
+    //     return NULL;
+    // }
+
+    // sess->pfds[0].fd = connfd;
+    // sess->pfds[0].events = POLLIN | POLLOUT;
+
+    return sess;
+}
+
+/**To create new socket, prevent concurrent issue**/
+cstmp_session_t*
+cstmp_new_session( cstmp_session_t* curr_sess ) {
+    int       connfd;
+    struct sockaddr_in *servaddr;
+    cstmp_session_t* sess = NULL;
+    int send_timeout = curr_sess->send_timeout,
+        recv_timeout = curr_sess->recv_timeout;
+
+    sess = __cstmp_alloc__(__stp_arg__, sizeof(cstmp_session_t));
+
+    if (sess == NULL) {
+        fprintf( stderr, "%s\n", "Err: No enough memory allocated");
+    }
+
+
+    if ( ( connfd = socket( AF_INET, SOCK_STREAM, 0 ) ) == -1 ) {
+        fprintf( stderr, "%s\n", "Error: Unable to create socket");
+        ROLLBACK_SESSION(sess);
         return NULL;
     }
 
-    sess->pfds[0].fd = connfd;
-    // sess->pfds[0].events = POLLIN | POLLOUT;
+
+    if ( connect( connfd, ( struct sockaddr *  )&curr_sess->addr, sizeof(curr_sess->addr) ) < 0 ) {
+        fprintf( stderr, "Error: unable to connect while creating new session\n");
+        ROLLBACK_SESSION(sess);
+        return NULL;
+    }
+
+    struct timeval send_tmout_val;
+    send_tmout_val.tv_sec = send_timeout / 1000; // Default 1 sec time out
+    send_tmout_val.tv_usec = (send_timeout % 1000) * 1000 ;
+    if (setsockopt (connfd, SOL_SOCKET, SO_SNDTIMEO, &send_tmout_val,
+                    sizeof(send_tmout_val)) < 0)
+        fprintf(stderr, "%s\n", "setsockopt send_tmout_val failed\n");
+
+    struct timeval recv_tmout_val;
+    recv_tmout_val.tv_sec = recv_timeout / 1000; // Default 1 sec time out
+    recv_tmout_val.tv_usec = (recv_timeout % 1000) * 1000 ;
+    if (setsockopt (connfd, SOL_SOCKET, SO_RCVTIMEO, &recv_tmout_val,
+                    sizeof(recv_tmout_val)) < 0)
+        fprintf(stderr, "%s\n", "setsockopt recv_tmout_val failed\n");
+
+    sess->addr = sess->addr;
+    sess->sock = connfd;
+    sess->read_lock = 0;
+    sess->write_lock = 0;
+    sess->send_timeout = send_timeout;
+    sess->recv_timeout = recv_timeout;
 
     return sess;
 }
@@ -153,27 +237,21 @@ cstmp_connect(const char *hostname, int port ) {
 void
 cstmp_disconnect(cstmp_session_t* stp_sess) {
     if (stp_sess) {
+        shutdown(stp_sess->sock, SHUT_RDWR);
+        close(stp_sess->sock);
         __cstmp_free__(__stp_arg__, stp_sess);
     }
 }
 
-
 cstmp_frame_t*
-cstmp_create_frame(cstmp_session_t* stp_sess) {
-    return cstmp_create_frame_r(stp_sess, cstmp_readwrite_frame);
-}
-
-cstmp_frame_t*
-cstmp_create_frame_r(cstmp_session_t* stp_sess, enum cstmp_frame_io_type io_type) {
+cstmp_new_frame() {
     cstmp_frame_buf_t *headers, *body;
 
     cstmp_frame_t *fr =  __cstmp_alloc__(__stp_arg__, sizeof(cstmp_frame_t));
     if (fr == NULL) {
         return NULL;
     }
-    fr->sess = stp_sess;
     fr->cmd = "";
-    fr->io_type = io_type;
     headers = &fr->headers;
     body = &fr->body;
     headers->start = headers->last = __cstmp_alloc__(__stp_arg__, cstmp_def_header_size * sizeof(u_char));
@@ -430,128 +508,117 @@ cstmp_reset_frame(cstmp_frame_t *fr) {
 }
 
 int
-cstmp_send_direct(cstmp_session_t *sess, const u_char *frame_str, int timeout_ms, int tries) {
-    int success = 0, connfd;
+cstmp_send_direct(cstmp_session_t *sess, const u_char *frame_str, int tries) {
+    int success = 0, connfd, rv;
     if (sess) {
-        struct pollfd *pfds = sess->pfds;
-        pfds[0].events = POLLOUT;
+        connfd = sess->sock;
+        CSTMP_LOCK_WRITING;
         do {
-            int rv = poll(pfds, sess->nfds,  timeout_ms);
-            CHECK_ERROR(rv);
-
-            if (pfds[0].revents & POLLOUT) {
-                connfd = pfds[0].fd;
-                if ( (rv = send(connfd, frame_str, strlen(frame_str), 0)) < 0 ||
-                        (rv = C_STMP_WRITE_CTR_AT_LF(connfd)) < 0) {
-                    CHECK_ERROR(rv);
-                } else {
-                    success = 1;
-                    tries = 0;
-                }
+            if ( (rv = send(connfd, frame_str, strlen(frame_str), 0)) < 0 ||
+                    (rv = C_STMP_WRITE_CTR_AT_LF(connfd)) < 0) {
+                CHECK_ERROR(rv);
+            } else {
+                success = 1;
+                tries = 0;
             }
         } while (tries--); /*while try*/
+        CSTMP_RELEASE_WRITING;
     }
     return success;
 }
 
 int
-cstmp_send(cstmp_frame_t *fr, int timeout_ms, int tries) {
-    int success = 0, connfd;
-    if (fr && fr->io_type >= 2) { /* Means it is write only or read write*/
-        cstmp_session_t *sess = fr->sess;
-        if (sess) {
-            struct pollfd *pfds = sess->pfds;
-            pfds[0].events = POLLOUT;
-            do {
-                int rv = poll(pfds, sess->nfds,  timeout_ms);
+cstmp_send(cstmp_session_t *sess, cstmp_frame_t *fr, int tries) {
+    int success = 0, connfd, rv;
+    if (fr && sess) {
+        connfd = sess->sock;
+        const u_char* cmd = fr->cmd;
+        const size_t header_len = cstmp_buf_size((&fr->headers)), body_len = cstmp_buf_size((&fr->body));
+        CSTMP_LOCK_WRITING;
+        do {
+            if (
+                (rv = send(connfd, cmd , strlen(cmd), 0)) < 0 ||
+                (rv = send(connfd, LF, 1 * sizeof(u_char), 0)) < 0 ||
+                (header_len && (rv = send(connfd, fr->headers.start , header_len, 0)) < 0) ||
+                (rv = send(connfd, LF, 1 * sizeof(u_char), 0)) < 0 ||
+                (body_len && (rv = send(connfd, fr->body.start , body_len, 0)) < 0) ||
+                (rv = C_STMP_WRITE_CTR_AT_LF(connfd)) < 0
+            ) {
                 CHECK_ERROR(rv);
-                if (pfds[0].revents & POLLOUT) {
-                    connfd = pfds[0].fd;
-                    const u_char* cmd = fr->cmd;
-                    const size_t header_len = cstmp_buf_size((&fr->headers)), body_len = cstmp_buf_size((&fr->body));
-                    if (
-                        (rv = send(connfd, cmd , strlen(cmd), 0)) < 0 ||
-                        (rv = send(connfd, LF, 1 * sizeof(u_char), 0)) < 0 ||
-                        (header_len && (rv = send(connfd, fr->headers.start , header_len, 0)) < 0) ||
-                        (rv = send(connfd, LF, 1 * sizeof(u_char), 0)) < 0 ||
-                        (body_len && (rv = send(connfd, fr->body.start , body_len, 0)) < 0) ||
-                        (rv = C_STMP_WRITE_CTR_AT_LF(connfd)) < 0
-                    ) {
-                        CHECK_ERROR(rv);
-                    } else {
-                        success = 1;
-                        tries = 0;
-                    }
-                }
-            } while (tries--);/*while try*/
-        }
-    } else fprintf(stderr, "%s\n", "Invalid Frame type");
+            } else {
+                success = 1;
+                tries = 0;
+            }
+        } while (tries--);/*while try*/
+        CSTMP_RELEASE_WRITING;
+    } else fprintf(stderr, "%s\n", "Invalid Frame or session type");
     return success;
 }
 
 int
-cstmp_recv(cstmp_frame_t *fr, int timeout_ms, int tries) {
-    int success = 0;
-    if (fr && fr->io_type <= 2) { /* Means it is read only or read write*/
-        cstmp_session_t *sess = fr->sess;
-        if (sess) {
-            struct pollfd *pfds = sess->pfds;
-            u_char recv_buff[1024], cmd[12];
-            pfds[0].events = POLLIN;
-            cstmp_reset_frame(fr);
-            do {
-                int rv = poll(sess->pfds, sess->nfds,  timeout_ms);
-                CHECK_ERROR(rv);
-                if (pfds[0].revents & POLLIN) {
-                    int n, i = 0;
-                    int connfd = pfds[0].fd;
-                    /*Parse Cmd*/
-                    while ( (n = recv( connfd , recv_buff, 1, 0)) > 0) {
-                        if (recv_buff[0] == '\n') {
-                            cmd[i] = '\0';
-                            cstmp_parse_cmd(fr, cmd);
-                            break;
-                        }
-                        cmd[i++] = recv_buff[0];
-                    }
-                    /***parse Header ***/
-                    u_char last_char = 0;
-                    cstmp_frame_buf_t *headers = &fr->headers;
-
-                    while ((n = recv( connfd , recv_buff, 1, 0)) > 0) {
-                        if (*recv_buff == '\n' && last_char == '\n') {
-                            // printf("%s\n", "you are here");
-                            // _cstmp_add_buf(headers, recv_buff, end_hdr - recv_buff );
-                            _cstmp_add_buf(headers, "\0", 1 * sizeof(u_char) );
-
-                            /***Add Body ***/
-                            cstmp_frame_buf_t *body = &fr->body;
-                            while ((n = recv( connfd , recv_buff, 1024, 0)) > 0) {
-                                _cstmp_add_buf(body, recv_buff, n);
-                            }
-                            break;
-                        } else {
-                            _cstmp_add_buf(headers, recv_buff, n);
-                        }
-                        last_char = recv_buff[0];
-                    }
-                    /** end of file **/
-                    CHECK_ERROR(n);
-                    return ++success/*Means success*/;
+cstmp_recv(cstmp_session_t *sess, cstmp_frame_t *fr, int tries) {
+    int success = 0, connfd;
+    if (fr && sess) {
+        u_char recv_buff[1], cmd[12];
+        cstmp_reset_frame(fr);
+        connfd = sess->sock;
+        CSTMP_LOCK_READING;
+        do {
+            int n, i = 0;
+            /*Parse Cmd*/
+            while ( (n = recv( connfd , recv_buff, 1, 0)) > 0) {
+                if (recv_buff[0] == '\n') {
+                    cmd[i] = '\0';
+                    cstmp_parse_cmd(fr, cmd);
+                    break;
                 }
-            } while (tries--);/*while try*/
-        }
+                cmd[i++] = recv_buff[0];
+            }
+            CHECK_ERROR(n);
+            /***parse Header ***/
+            u_char last_char = 0;
+            cstmp_frame_buf_t *headers = &fr->headers;
+
+            while ((n = recv( connfd , recv_buff, 1, 0)) > 0) {
+                if (*recv_buff == '\n' && last_char == '\n') {
+                    // printf("%s\n", "you are here");
+                    // _cstmp_add_buf(headers, recv_buff, end_hdr - recv_buff );
+                    _cstmp_add_buf(headers, "\0", 1 * sizeof(u_char) );
+
+                    /***Add Body ***/
+                    cstmp_frame_buf_t *body = &fr->body;
+                    while ((n = recv( connfd , recv_buff, 1, 0)) > 0) {
+                        if (recv_buff[0] == 0) {
+                            if (((n = recv( connfd , recv_buff, 1, 0)) > 0)) {
+                                if (recv_buff[0] != '\n') {
+                                    fprintf(stderr, "%s\n", "Error, Invalid frame receive");
+                                    CSTMP_RELEASE_READING;
+                                    return success;
+                                }
+                                CSTMP_RELEASE_READING;
+                                return ++success;
+                            }
+                        }
+                        _cstmp_add_buf(body, recv_buff, n);
+                    }
+                    break;
+                }
+                _cstmp_add_buf(headers, recv_buff, n);
+                last_char = recv_buff[0];
+            }
+            /** end of file **/
+            CHECK_ERROR(n);
+        } while (tries--);/*while try*/
+        CSTMP_RELEASE_READING;
     } else fprintf(stderr, "%s\n", "Invalid Frame type");
     return success; /*Failed*/
 }
 
 void
-cstmp_consume(cstmp_frame_t *fr, void (*callback)(cstmp_frame_t *), int *consuming, int timeout_ms) {
-    if (fr && fr->io_type <= 2) {
-        while (*consuming) {
-            if (cstmp_recv(fr, timeout_ms, 0)) {
-                callback(fr);
-            }
+cstmp_consume(cstmp_session_t *sess, cstmp_frame_t *fr, void (*callback)(cstmp_frame_t *), int *consuming) {
+    while (*consuming) {
+        if (cstmp_recv(sess, fr, 0)) {
+            callback(fr);
         }
-    } else fprintf(stderr, "%s\n", "Invalid Frame type to consume");
+    }
 }
