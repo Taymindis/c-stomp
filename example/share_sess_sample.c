@@ -88,7 +88,8 @@ int main() {
 				cstmp_add_header(fr, "destination", QUEUE_NAME);
 				cstmp_add_header(fr, "persistent", "false");
 				cstmp_add_header(fr, "content-type", "text/plain");
-				cstmp_add_body_content(fr, "{\"my_key\":\"akjdlkajdklj2ljladasjldjasljdl@ASD2\"}");
+				cstmp_add_body_content(fr, "{\"my_key\":\"akjdlkajdklj2ljladasjldjasljdl@ASD2\", "); // for direct added
+				cstmp_add_body_content_and_len(fr, "\"my_name\":\"John D\"}", sizeof("\"my_name\":\"John D\"}") - 1); // for len specified
 
 				if (! cstmp_send(fr, 1000, 1)) {
 					assert(0 && "Unable to send frame");

@@ -95,6 +95,8 @@ extern int cstmp_add_header(cstmp_frame_t *fr, const u_char *key, const u_char* 
 
 extern int cstmp_add_body_content(cstmp_frame_t *fr, u_char* content);
 
+extern int cstmp_add_body_content_and_len(cstmp_frame_t *fr, u_char* content, size_t content_len);
+
 extern u_char* cstmp_get_cmd(cstmp_frame_t *fr);
 
 extern int cstmp_get_header(cstmp_frame_t *fr, const u_char *key, cstmp_frame_val_t *hdr_val);

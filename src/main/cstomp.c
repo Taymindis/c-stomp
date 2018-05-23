@@ -315,6 +315,22 @@ cstmp_add_body_content(cstmp_frame_t *fr, u_char* content) {
     return 1;
 }
 
+int
+cstmp_add_body_content_and_len(cstmp_frame_t *fr, u_char* content, size_t content_len) {
+    cstmp_frame_buf_t *body;
+    if (!content)
+        return 0;
+
+    body = &fr->body;
+
+    if ( ( cstmp_buf_size(body) + content_len ) >  body->total_size ) {
+        _cstmp_reload_buf_size(body, cstmp_buf_size(body) + content_len);
+    }
+
+    body->last = cstmp_cpymem(body->last, content, content_len);
+    return 1;
+}
+
 u_char*
 cstmp_get_cmd(cstmp_frame_t *fr) {
     if (fr) {
