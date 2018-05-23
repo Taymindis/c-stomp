@@ -23,31 +23,36 @@ Example
 ======
 ```c
     /*For Connecting to Stomp */
-    cstmp_session_t *sess = cstmp_connect(HOST, PORT);
-    cstmp_frame_t *fr = cstmp_new_frame(sess);
-    fr->cmd = "CONNECT";
-    cstmp_add_header(fr, "login", "guest");
-    cstmp_add_header(fr, "passcode", "guest");
-    if (cstmp_send(fr, 1000/*timeout_ms*/, 0/*conn retry time*/) && cstmp_recv(fr, 1000/*timeout_ms*/, 0/*conn retry time*/)) {
-        cstmp_dump_frame_pretty(fr); /*For Display purpose*/
+    cstmp_session_t *consuming_sess = cstmp_connect_t(HOST, PORT, 500/*send_timeout*/, 500/*recv_timeout*/);
+    if (consuming_sess) {
+        cstmp_frame_t *consume_fr = cstmp_new_frame();
+        consume_fr->cmd = "CONNECT";
+        cstmp_add_header(consume_fr, "login", "guest");
+        cstmp_add_header(consume_fr, "passcode", "guest");
+        cstmp_add_header(consume_fr, "version", "1.2");
+
+        if (cstmp_send(consuming_sess, consume_fr, 0) && cstmp_recv(consuming_sess, consume_fr, 0)) {
+            cstmp_dump_frame_pretty(consume_fr);
+        }
     }
 ```
 ```c
     /* For Sending to */
-    cstmp_reset_frame(fr); // Remember to reset frame for every send command.
+    cstmp_reset_frame(fr);
     fr->cmd = "SEND";
     cstmp_add_header(fr, "destination", QUEUE_NAME);
     cstmp_add_header(fr, "persistent", "false");
     cstmp_add_header(fr, "content-type", "text/plain");
     cstmp_add_body_content(fr, "{\"my_key\":\"akjdlkajdklj2ljladasjldjasljdl@ASD2\"}");
 
-    if (! cstmp_send(fr, 1000, 1)) {
+    if (! cstmp_send(sess, fr, 1)) {
         assert(0 && "Unable to send frame");
+        break;
     }
 ```
 ```c
     /* For Reading Response */
-    if(cstmp_recv(fr, 1000, 0)) {
+    if(cstmp_recv(sess, fr, 2 /*conn retry 2 times*/)) {
         cstmp_dump_frame_raw(fr); /*For Raw message display, good for debugging purpose*/ 
     }
 ```
@@ -63,7 +68,7 @@ Example
     cstmp_add_header(consume_fr, "ack", "auto");
     cstmp_add_header(consume_fr, "id", "0");
     cstmp_add_header(consume_fr, "durable", "false");
-    cstmp_send(consume_fr, 1000, 3);
+    cstmp_send(consuming_sess, consume_fr, 3);
 
     void (*consume_handler)(cstmp_frame_t* consume_fr) =
     ({
@@ -75,7 +80,7 @@ Example
     });
 
     /** Keep hooking until consuming = false / 0 **/
-    cstmp_consume((cstmp_frame_t*) consume_fr, consume_handler, &consuming, 1000/*Reloop time, can ignore*/);
+    cstmp_consume(consuming_sess, (cstmp_frame_t*) consume_fr, consume_handler, &consuming);
 ```
 [Back to TOC](#table-of-contents)
 
