@@ -37,7 +37,7 @@
 *
 **/
 typedef struct cstmp_frame_val_s {
-    u_char *val;
+    u_char *data;
     size_t len;
 } cstmp_frame_val_t;
 

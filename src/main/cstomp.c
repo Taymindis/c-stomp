@@ -427,11 +427,11 @@ cstmp_get_header(cstmp_frame_t *fr, const u_char *key, cstmp_frame_val_t *hdr_va
     }
 
     if (ret) {
-        hdr_val->val = ++ret;
-        hdr_val->len = ((u_char*)strchr(hdr_val->val, LF_CHAR)) - hdr_val->val;
+        hdr_val->data = ++ret;
+        hdr_val->len = ((u_char*)strchr(hdr_val->data, LF_CHAR)) - hdr_val->data;
         return 1;
     } else {
-        hdr_val->val = NULL;
+        hdr_val->data = NULL;
         hdr_val->len = 0;
         return 0;
     }
@@ -439,7 +439,7 @@ cstmp_get_header(cstmp_frame_t *fr, const u_char *key, cstmp_frame_val_t *hdr_va
 
 void
 cstmp_get_body(cstmp_frame_t *fr, cstmp_frame_val_t *body_val) {
-    body_val->val = fr->body.start;
+    body_val->data = fr->body.start;
     body_val->len = cstmp_buf_size((&fr->body));
 }
 
