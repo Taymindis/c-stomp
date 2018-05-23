@@ -90,7 +90,7 @@ int main() {
 	/*** Sending ***/
 	cstmp_session_t *sess = cstmp_connect(HOST, PORT);
 	if (sess) {
-		cstmp_frame_t *fr = cstmp_new_frame(sess);
+		cstmp_frame_t *fr = cstmp_new_frame();
 		if (fr) {
 			fr->cmd = "CONNECT";
 			cstmp_add_header_str(fr, "version:1.2"); // for direct string set method
