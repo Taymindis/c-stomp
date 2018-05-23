@@ -35,6 +35,7 @@ static void* __stp_arg__ = NULL;
 #define cstmp_def_message_size 1024
 #define cstmp_cpymem(dst, src, n)   (((u_char *) memcpy(dst, src, n)) + (n))
 #define cstmp_buf_size(b) (size_t) (b->last - b->start)
+#define cstmp_buf_left(b) (size_t) ( (b->start + b->total_size) - b->last)
 #define LF_CHAR     (u_char) '\n'
 #define LF     (u_char*) "\n"
 #define CRLF   (u_char*)"\r\n"
@@ -55,10 +56,26 @@ static void* __stp_arg__ = NULL;
 if(n<0){\
 if (errno == EWOULDBLOCK || errno == EINTR) {\
 continue;\
-}else if (errno != EAGAIN && errno != EWOULDBLOCK){\
+}else if (errno != EAGAIN){\
 fprintf(stderr, "Error while process socket read/write: %s\n",strerror(errno));\
 tries=0;success=0;/*FAIL*/\
 }}
+
+#define CHECK_OR_GOTO(n, __step) \
+if(n<0){\
+if ((errno == EWOULDBLOCK || errno == EINTR) && tries--) {\
+goto __step;\
+}else if (errno != EAGAIN){\
+fprintf(stderr, "Error while process socket read/write: %s\n",strerror(errno));\
+tries=0;success=0;/*FAIL*/\
+}}
+
+#define FRAME_READ_RETURN(success) \
+CSTMP_RELEASE_READING;\
+if(!success){\
+fprintf(stderr, "%s\n", "Error, Invalid frame IO reading");\
+}return success;
+
 
 static const u_char *__cstmp_commands[16] = {
     (u_char*)"SEND",
@@ -557,14 +574,15 @@ cstmp_send(cstmp_session_t *sess, cstmp_frame_t *fr, int tries) {
 
 int
 cstmp_recv(cstmp_session_t *sess, cstmp_frame_t *fr, int tries) {
-    int success = 0, connfd;
+    int success = 0, connfd, content_len_i;
+    u_char* content_len_s;
     if (fr && sess) {
         u_char recv_buff[1], cmd[12];
         cstmp_reset_frame(fr);
         connfd = sess->sock;
+        int n, i = 0;
         CSTMP_LOCK_READING;
         do {
-            int n, i = 0;
             /*Parse Cmd*/
             while ( (n = recv( connfd , recv_buff, 1, 0)) > 0) {
                 if (recv_buff[0] == '\n') {
@@ -587,21 +605,38 @@ cstmp_recv(cstmp_session_t *sess, cstmp_frame_t *fr, int tries) {
 
                     /***Add Body ***/
                     cstmp_frame_buf_t *body = &fr->body;
-                    while ((n = recv( connfd , recv_buff, 1, 0)) > 0) {
-                        if (recv_buff[0] == 0) {
-                            if (((n = recv( connfd , recv_buff, 1, 0)) > 0)) {
-                                if (recv_buff[0] != '\n') {
-                                    fprintf(stderr, "%s\n", "Error, Invalid frame receive");
-                                    CSTMP_RELEASE_READING;
-                                    return success;
-                                }
-                                CSTMP_RELEASE_READING;
-                                return ++success;
-                            }
+                    if ( content_len_s = strstr(headers->start, "content-length:") ) {
+                        content_len_i = atoi(content_len_s + 15 /* sizeof content-length: */ );
+                        if (content_len_i > cstmp_buf_left(body)) {
+                            _cstmp_reload_buf_size(body, (size_t) content_len_i);
                         }
-                        _cstmp_add_buf(body, recv_buff, n);
+REREAD_WHOLE_BODY:
+                        if ((n = recv( connfd , body->last, content_len_i, 0)) > 0) {
+                            body->last += n;
+                            char terminator_linecheck[2];
+                            if (((n = recv( connfd , terminator_linecheck, 2, 0)) > 1) &&
+                                    terminator_linecheck[0] == 0 && terminator_linecheck[1] == '\n') {
+                                FRAME_READ_RETURN(1);
+                            }
+                            FRAME_READ_RETURN(0);
+                        }
+                        CHECK_OR_GOTO(n, REREAD_WHOLE_BODY);
+                    } else {
+REREAD_BODY:
+                        while ((n = recv( connfd , recv_buff, 1, 0)) > 0) {
+                            if (recv_buff[0] == 0) {
+                                if (((n = recv( connfd , recv_buff, 1, 0)) > 0)) {
+                                    if (recv_buff[0] != '\n') {
+                                        FRAME_READ_RETURN(0);
+                                    }
+                                    FRAME_READ_RETURN(1);
+                                }
+                            }
+                            _cstmp_add_buf(body, recv_buff, n);
+                        }
+                        CHECK_OR_GOTO(n, REREAD_BODY);
                     }
-                    break;
+                    FRAME_READ_RETURN(0);
                 }
                 _cstmp_add_buf(headers, recv_buff, n);
                 last_char = recv_buff[0];
