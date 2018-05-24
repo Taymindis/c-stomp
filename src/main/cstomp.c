@@ -577,30 +577,30 @@ cstmp_recv(cstmp_session_t *sess, cstmp_frame_t *fr, int tries) {
     int success = 0, connfd, content_len_i;
     u_char* content_len_s;
     if (fr && sess) {
-        u_char recv_buff[1], cmd[12];
+        u_char cmd_buff[1], cmd[12];
         cstmp_reset_frame(fr);
         connfd = sess->sock;
         int n, i = 0;
         CSTMP_LOCK_READING;
         do {
             /*Parse Cmd*/
-            while ( (n = recv( connfd , recv_buff, 1, 0)) > 0) {
-                if (recv_buff[0] == '\n') {
+            while ( (n = recv( connfd , cmd_buff, 1, 0)) > 0) {
+                if (cmd_buff[0] == '\n') {
                     cmd[i] = '\0';
                     cstmp_parse_cmd(fr, cmd);
                     break;
+                } else if (i == 12) {
+                    FRAME_READ_RETURN(0);
                 }
-                cmd[i++] = recv_buff[0];
+                cmd[i++] = cmd_buff[0];
             }
             CHECK_ERROR(n);
             /***parse Header ***/
             u_char last_char = 0;
             cstmp_frame_buf_t *headers = &fr->headers;
 
-            while ((n = recv( connfd , recv_buff, 1, 0)) > 0) {
-                if (*recv_buff == '\n' && last_char == '\n') {
-                    // printf("%s\n", "you are here");
-                    // _cstmp_add_buf(headers, recv_buff, end_hdr - recv_buff );
+            while ((n = recv( connfd , headers->last, 1, 0)) > 0) {
+                if (*headers->last == '\n' && last_char == '\n') {
                     _cstmp_add_buf(headers, "\0", 1 * sizeof(u_char) );
 
                     /***Add Body ***/
@@ -623,8 +623,10 @@ REREAD_WHOLE_BODY:
                         CHECK_OR_GOTO(n, REREAD_WHOLE_BODY);
                     } else {
 REREAD_BODY:
-                        while ((n = recv( connfd , recv_buff, 1, 0)) > 0) {
-                            if (recv_buff[0] == 0) {
+                        while ((n = recv( connfd , body->last, 1, 0)) > 0) {
+                            if (*body->last == 0) {
+                                char recv_buff[1]; 
+                                /** Check the Frame Terminator**/
                                 if (((n = recv( connfd , recv_buff, 1, 0)) > 0)) {
                                     if (recv_buff[0] != '\n') {
                                         FRAME_READ_RETURN(0);
@@ -632,14 +634,19 @@ REREAD_BODY:
                                     FRAME_READ_RETURN(1);
                                 }
                             }
-                            _cstmp_add_buf(body, recv_buff, n);
+                            *body->last++;
+                            if (cstmp_buf_size(body) == body->total_size) {
+                                _cstmp_reload_buf_size(body, body->total_size * 2);
+                            }
                         }
                         CHECK_OR_GOTO(n, REREAD_BODY);
                     }
                     FRAME_READ_RETURN(0);
                 }
-                _cstmp_add_buf(headers, recv_buff, n);
-                last_char = recv_buff[0];
+                last_char = *headers->last++; /*only plus 1*/
+                if (cstmp_buf_size(headers) == headers->total_size) {
+                    _cstmp_reload_buf_size(headers, headers->total_size * 2);
+                }
             }
             /** end of file **/
             CHECK_ERROR(n);
