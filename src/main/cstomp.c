@@ -155,12 +155,6 @@ cstmp_connect_t(const char *hostname, int port, int send_timeout, int recv_timeo
 
     servaddr->sin_addr = *(struct in_addr *)hostip->h_addr;
 
-    if ( connect( connfd, ( struct sockaddr *  )servaddr, sizeofaddr ) < 0 ) {
-        fprintf( stderr, "Error: unable to connect to %s:%d\n", hostname, port);
-        ROLLBACK_SESSION(sess);
-        return NULL;
-    }
-
     struct timeval send_tmout_val;
     send_tmout_val.tv_sec = send_timeout / 1000; // Default 1 sec time out
     send_tmout_val.tv_usec = (send_timeout % 1000) * 1000 ;
@@ -175,6 +169,11 @@ cstmp_connect_t(const char *hostname, int port, int send_timeout, int recv_timeo
                     sizeof(recv_tmout_val)) < 0)
         fprintf(stderr, "%s\n", "setsockopt recv_tmout_val failed\n");
 
+    if ( connect( connfd, ( struct sockaddr *  )servaddr, sizeofaddr ) < 0 ) {
+        fprintf( stderr, "Error: unable to connect to %s:%d\n", hostname, port);
+        ROLLBACK_SESSION(sess);
+        return NULL;
+    }
 
     sess->sock = connfd;
     sess->read_lock = 0;
