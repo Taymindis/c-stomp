@@ -7,22 +7,25 @@ IF (NOT DEFINED CMAKE_INSTALL_INCLUDEDIR)
 SET(CMAKE_INSTALL_INCLUDEDIR /usr/local/include)
 ENDIF(NOT DEFINED CMAKE_INSTALL_INCLUDEDIR)
 
-file(GLOB_RECURSE sources src/main/*.c src/main/*.h)
-file(GLOB_RECURSE testfile example/main.c src/main/*.h)
-file(GLOB_RECURSE testfile2 example/share_sess_sample.c src/main/*.h)
+file(GLOB_RECURSE sources src/*.c src/*.h)
+file(GLOB_RECURSE testfile example/main.c src/*.h)
+file(GLOB_RECURSE testfile2 example/share_sess_sample.c src/*.h)
 
 
 add_executable(run-test ${sources} ${testfile})
 add_executable(run-test2 ${sources} ${testfile2})
 
-target_include_directories(run-test PUBLIC src/main)
-target_include_directories(run-test2 PUBLIC src/main)
+target_include_directories(run-test PUBLIC src)
+target_include_directories(run-test2 PUBLIC src)
 
 target_link_libraries(run-test PUBLIC pthread)
 target_link_libraries(run-test2 PUBLIC pthread)
 
-include_directories(src/main /usr/local/include)
+include_directories(src /usr/local/include)
 
+IF (DEFINED SHARED_CONNECTION)
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DCSTOMP_READ_WRITE_SHR_LOCK=1")
+ENDIF (DEFINED SHARED_CONNECTION)
 # SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wstrict-prototypes -Wmissing-prototypes")
 # SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual")
 # SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wsign-compare -std=c11 -pedantic")
@@ -57,7 +60,7 @@ install(TARGETS ${PROJNAME} EXPORT ${PROJNAME}
 		LIBRARY DESTINATION lib${LIB_SUFFIX}
 		# RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 		)
-install(FILES src/main/cstomp.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES src/cstomp.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(CODE "execute_process(COMMAND ldconfig)")
 

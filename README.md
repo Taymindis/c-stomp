@@ -88,6 +88,8 @@ Example
 Installation
 ============
 
+##### For non sharing connection
+
 ```bash
 cd $project_root_dir
 mkdir build
@@ -97,6 +99,19 @@ make -j2
 ./run-test
 sudo make install
 ```
+
+##### For sharing the connection 
+
+```bash
+cd $project_root_dir
+mkdir build
+cd build
+cmake -DSHARED_CONNECTION=1 ..
+make -j2
+./run-test2
+sudo make install
+```
+
 [Back to TOC](#table-of-contents)
 
 Uninstall

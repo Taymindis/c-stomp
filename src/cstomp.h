@@ -52,8 +52,10 @@ typedef struct cstmp_session_s {
     struct sockaddr_in addr;
     int send_timeout;
     int recv_timeout;
+#ifdef CSTOMP_READ_WRITE_SHR_LOCK    
     /*Atomic*/int read_lock;
     /*Atomic*/int write_lock;
+#endif    
 } cstmp_session_t;
 
 typedef struct cstmp_frame_s {
