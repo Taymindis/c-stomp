@@ -136,6 +136,7 @@ cstmp_connect_t(const char *hostname, int port, int send_timeout, int recv_timeo
 
     if (sess == NULL) {
         fprintf( stderr, "%s\n", "Err: No enough memory allocated");
+        return NULL;
     }
 
     servaddr = &sess->addr;
@@ -221,6 +222,7 @@ cstmp_new_session( cstmp_session_t* curr_sess ) {
 
     if (sess == NULL) {
         fprintf( stderr, "%s\n", "Err: No enough memory allocated");
+        return NULL;
     }
 
 
